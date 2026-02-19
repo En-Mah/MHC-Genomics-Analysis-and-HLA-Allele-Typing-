@@ -1,0 +1,477 @@
+\documentclass[a4paper]{article}
+
+% Packages
+\usepackage{geometry}
+\geometry{left=2cm, right=2cm, top=2.54cm, bottom=1.54cm}
+\usepackage{graphicx, hyperref, setspace, amsmath, amssymb, titlesec, fancyhdr, multicol, parskip, indentfirst, etoolbox, caption, cite, xcolor}
+\usepackage{subcaption}
+\usepackage[shortlabels]{enumitem}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Task 1 Report},
+    pdfpagemode=FullScreen,
+}
+\urlstyle{same}
+
+% Title Formatting
+\titleformat{\section}{\centering\large\scshape}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\itshape}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\itshape}{\thesubsubsection}{1em}{}
+
+\setstretch{1.0}
+\setlength{\parskip}{6pt}
+\titlespacing{\section}{0pt}{6pt}{6pt}
+\titlespacing{\subsection}{0pt}{6pt}{6pt}
+\titlespacing{\subsubsection}{0pt}{6pt}{6pt}
+
+% Section Numbering
+\renewcommand{\thesection}{\Roman{section}.}
+\renewcommand{\thesubsection}{\textit{\Alph{subsection}.}}
+\renewcommand{\thesubsubsection}{\textit{\arabic{subsubsection}.}}
+\renewcommand{\thetable}{\Roman{table}}
+\renewcommand{\thefigure}{\Roman{figure}}
+
+\captionsetup{labelfont={small,sc}, textfont={small,sc}}
+
+% Fancy Header Configuration
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\textbf{Bioinformatics}}
+
+\begin{document}
+
+\vspace{-1.5cm}
+
+\lhead{Mahla Entezari--401222017}
+\rhead{Bioinformatics}
+\chead{\textbf{Assignment 1 – Task 1 Report}}
+\lfoot{Mahla Entezari}
+\rfoot{Shahid Beheshti University}
+
+\title{\textbf{MHC Genomics Analysis Project - Task 1 Report}\\
+\textit{Gene-Level Annotation from BAM using GTF and Reference Genome}}
+
+\author{Mahla Entezari\thanks{{\href{mailto:MahlaEntezari.sbu@gmail.com}{MahlaEntezari.sbu@gmail.com}}}\\
+\textit{Shahid Beheshti University, Tehran, Iran}\\
+\textit{Bioinformatics  -- Fall 2025}}
+
+\date{\today}
+
+\maketitle
+
+\section{Introduction}
+
+%\begin{multicols}{2}
+
+%\subsection{Project context and motivation}
+Modern high-throughput sequencing (Next-Generation Sequencing; NGS) produces massive amounts of short reads that must be computationally processed to extract biologically meaningful information. A typical analysis workflow begins with sequencing reads, aligns them to a reference genome, and then uses genome annotation resources to interpret which biological features (genes, exons, regulatory elements) are supported by the aligned data.
+This project focuses on immune-related genomic regions, particularly the Major Histocompatibility Complex (MHC), which is well-known for high polymorphism and complex sequence structure. Even though later tasks in the project address MHC-specific questions, Task~1 builds the foundation by converting raw alignment data into a consistent \textbf{gene-level representation} that can be used for quality control, downstream filtering, comparative analysis across samples, and ultimately interpretation.
+
+%\begin{multicols}{2}
+
+\subsection{Objectives}
+Task~1 requires producing, for each sample alignment file (BAM), a \textbf{per-sample CSV table} that contains information about genes that appear in the alignment. A gene is considered ``present'' if at least one aligned read (or fragment) overlaps that gene. Each output CSV must contain at a minimum the following fields:
+\begin{itemize}
+    \item \texttt{gene\_name}
+    \item \texttt{chromosome}
+    \item \texttt{start}
+    \item \texttt{end}
+    \item \texttt{strand}
+    \item \texttt{sequence}
+\end{itemize}
+
+Importantly, the \texttt{sequence} column must contain the genomic DNA sequence of each gene region, meaning this task is not only about gene coordinate extraction, but also about integrating reference genome sequence to construct a complete and reproducible gene-level table.
+
+\subsection{Importance}
+Later tasks involve analyzing read mapping quality, evaluating coverage patterns across MHC genes, and identifying candidate HLA alleles. All of these depend on reliable gene coordinates and correct reference build selection. If the annotation build mismatches the BAM reference (hg38 annotation used with hg19-aligned BAM), then gene coordinates do not line up with read alignments, causing downstream analyses to be incorrect. Therefore, this task is both a computational pipeline construction problem and a data integrity problem.
+
+
+\section{Materials and Methods}
+
+\subsection{Overview of inputs and outputs}
+
+\subsubsection{Inputs}
+This task uses three categories of input data:
+
+\begin{enumerate}[1)]
+    \item \textbf{BAM files:} Each BAM file is a binary compressed alignment format containing aligned sequencing reads. BAM stores genomic coordinates of alignments, mapping quality scores, and many other alignment attributes.
+    \item \textbf{GTF gene annotation:} A GTF file describes the genomic coordinates of genes and related features (transcripts, exons, etc.) on a given reference build. For this task, gene-level features and gene names are required.
+    \item \textbf{Reference genome FASTA:} A FASTA file provides actual DNA sequences for each reference contig/chromosome. Since GTF provides coordinates but not nucleotide sequences, FASTA is required to populate the \texttt{sequence} column.
+\end{enumerate}
+
+\subsubsection{Outputs}
+For each input BAM file \texttt{<sample>.bam}, the pipeline produces:
+
+\begin{itemize}
+    \item \texttt{project/csv/<sample>.task1.csv} \quad (final deliverable; one per sample)
+\end{itemize}
+
+Additionally, intermediate files are produced for reproducibility and debugging (counts, gene lists, BED files, FASTA subsequences, and logs).
+
+\subsection{Computational environment}
+The analysis was executed on macOS using the \texttt{zsh} shell. The pipeline relies on common command-line bioinformatics tools:
+
+\begin{itemize}
+    \item \textbf{samtools:} for inspecting alignment headers and indexing FASTA
+    \item \textbf{featureCounts (Subread):} for assigning aligned reads/fragments to genes
+    \item \textbf{bedtools:} for extracting reference genome sequences from coordinate intervals
+    \item \textbf{Python 3:} for parsing GTF, constructing coordinate tables, and merging sequences into CSV
+\end{itemize}
+
+\subsection{Steps:}
+\subsection*{Step 1: Identify the reference build used for BAM alignment}
+
+\subsubsection*{Rationale}
+Gene coordinates in a GTF are only meaningful relative to the same reference genome build used during alignment. If the BAM file was aligned against hg19 (GRCh37), then an hg38 (GRCh38) GTF will produce incorrect coordinate mapping. Therefore, the first step is verifying the reference build from the BAM header.
+
+\subsubsection*{Procedure}
+I extracted the BAM header using:
+\begin{verbatim}
+samtools view -H <sample>.bam
+\end{verbatim}
+
+The header contains \texttt{@SQ} lines that define each contig (chromosome names and lengths) and \texttt{@PG} lines that contain the command line used for alignment. In our BAM header, the reference path included:
+\begin{verbatim}
+/genomics/opt/RefGenomes/hg19/ucsc.hg19.fasta
+\end{verbatim}
+
+This confirmed the BAM files were aligned to \textbf{UCSC hg19}. Consequently, the annotation GTF must match hg19/GRCh37 coordinate space, and chromosome naming should match UCSC style (\texttt{chr6}, not \texttt{6}).
+
+\subsection*{Step 2: Select the correct GTF annotation}
+
+\subsubsection*{Rationale}
+Because alignment was against UCSC hg19, I must use an hg19-compatible GTF. I selected \textbf{GENCODE v37lift37 annotation} because it is a widely-used, comprehensive human gene annotation mapped to GRCh37/hg19.
+
+\subsubsection*{Chosen file}
+\begin{verbatim}
+gencode.v37lift37.annotation.gtf
+\end{verbatim}
+
+%This file provides gene coordinates and \texttt{gene_name} attributes that I use to annotate aligned data.
+
+\subsection*{Step 3: Count fragments per gene using featureCounts}
+
+\subsubsection*{Rationale}
+The core idea of the task is to identify which genes are supported by aligned reads. Rather than manually intersecting every read with every gene, I used \texttt{featureCounts}, a standard and efficient tool for assigning reads/fragments to genomic features.
+
+A key detail is that the BAM data is paired-end. In paired-end sequencing, two reads represent one DNA fragment. Counting reads separately can inflate counts and lead to incorrect presence/absence decisions. Therefore, I counted \textbf{fragments} using paired-end mode.
+
+\subsubsection*{Command}
+For each BAM file:
+\begin{verbatim}
+featureCounts -p -B \
+  -a project/gtf/gencode.v37lift37.annotation.gtf \
+  -o project/counts/<sample>.counts.txt \
+  -g gene_name \
+  -t exon \
+  project/bam/<sample>.bam
+\end{verbatim}
+
+\textbf{Parameter explanations:}
+\begin{itemize}
+    \item \texttt{-p}: paired-end mode (count fragments)
+    \item \texttt{-B}: require properly paired fragments (higher confidence)
+    \item \texttt{-a}: path to annotation (GTF)
+    \item \texttt{-o}: output count file
+    \item \texttt{-g gene\_name}: group exons by gene name
+    \item \texttt{-t exon}: use exons as counting features and aggregate to gene-level
+\end{itemize}
+
+\subsubsection*{Output}
+\texttt{featureCounts} produces a tabular output with one row per gene, including read/fragment counts.
+
+\subsection*{Step 4: Extract genes with count $>$ 0 (genes present in the sample)}
+
+\subsubsection*{Rationale}
+The task requires output only for genes that have at least one aligned read. Once counts per gene are obtained, presence is defined simply as:
+\[
+\text{Gene is present} \iff \text{count} > 0.
+\]
+
+\subsubsection*{Command}
+I extracted gene names with positive counts using \texttt{awk}:
+\begin{verbatim}
+awk 'BEGIN{FS="\t"} $1 !~ /^#/ && NR>2 {\
+  if($NF>0) print $1 }' \
+  project/counts/<sample>.counts.txt \
+  > project/genes/<sample>.genes.txt
+\end{verbatim}
+
+\subsubsection*{Output}
+A gene list file:
+\begin{verbatim}
+project/genes/<sample>.genes.txt
+\end{verbatim}
+Each line contains a gene name. For example, in sample \texttt{MOT36308}, the pipeline detected \textbf{734 genes} with counts $>0$.
+
+\subsection*{Step 5: Extract gene coordinates (chromosome/start/end/strand) from GTF}
+
+\subsubsection*{Rationale}
+Counts alone do not satisfy this task's output requirements. I need gene coordinates and the strand. These are stored in GTF lines where the third field (feature type) is \texttt{gene}. However, a full GTF file contains multiple feature types (exon, transcript, etc.), so I must:
+\begin{enumerate}
+    \item Filter to gene-level features only
+    \item Match gene names to the genes detected in Step~4
+    \item Extract coordinate fields
+\end{enumerate}
+
+\subsubsection*{Python implementation (\texttt{make\_gene\_table.py})}
+I implemented a Python script to parse the GTF and generate two files:
+\begin{itemize}
+    \item TSV: \texttt{gene\_name, chromosome, start, end, strand}
+    \item BED: coordinate intervals for sequence extraction
+\end{itemize}
+
+The script:
+\begin{enumerate}
+    \item Loads the gene list from \texttt{<sample>.genes.txt}
+    \item Iterates through GTF records
+    \item Keeps only records where \texttt{feature == "gene"}
+    \item Extracts \texttt{gene\_name} from the attributes column
+    \item Keeps only genes in the gene list
+    \item Writes TSV and BED outputs
+\end{enumerate}
+
+\subsubsection*{BED coordinate conventions}
+GTF uses 1-based inclusive coordinates. BED uses 0-based half-open intervals. Therefore, conversion was:
+\[
+\text{BED start} = \text{GTF start} - 1,\quad \text{BED end} = \text{GTF end}.
+\]
+This conversion is essential for correct sequence extraction.
+
+\subsubsection*{Validation}
+For \texttt{MOT36308}, the script reported:
+\begin{verbatim}
+Found 734 genes in GTF (out of 734 input genes).
+\end{verbatim}
+This indicates a complete match between detected genes and the chosen GTF annotation.
+
+\subsection*{Step 6: Obtain the reference genome FASTA (UCSC hg19) and index it}
+
+\subsubsection*{Rationale}
+The \texttt{sequence} column requires actual nucleotide content. Neither BAM nor GTF provides full gene sequences in a direct form suitable for output. Therefore, I must extract the gene region sequences from the same reference used for alignment (UCSC hg19).
+
+\subsubsection*{FASTA acquisition and construction}
+I downloaded UCSC hg19 chromosome FASTA files and concatenated them into a single FASTA:
+\begin{verbatim}
+cat chr*.fa > ucsc.hg19.fasta
+\end{verbatim}
+I verified the presence of expected contigs by checking FASTA headers using:
+\begin{verbatim}
+grep -m 3 '^>' project/ref/ucsc.hg19.fasta
+\end{verbatim}
+
+\subsubsection*{Indexing}
+I created a FASTA index for random access:
+\begin{verbatim}
+samtools faidx project/ref/ucsc.hg19.fasta
+\end{verbatim}
+
+\subsection*{Step 7: Extract gene sequences using bedtools getfasta}
+
+\subsubsection*{Rationale}
+Given a BED file of gene intervals, I can extract the corresponding reference sequences. I must also respect strand because genes can be encoded on the reverse strand.
+
+\subsubsection*{Command}
+\begin{verbatim}
+bedtools getfasta \
+  -fi project/ref/ucsc.hg19.fasta \
+  -bed project/genes/<sample>.genes.bed \
+  -s -name \
+  -fo project/seq/<sample>.genes.fa
+\end{verbatim}
+
+\textbf{Parameter explanations:}
+\begin{itemize}
+    \item \texttt{-fi}: input FASTA
+    \item \texttt{-bed}: BED intervals of genes
+    \item \texttt{-s}: stranded extraction (reverse-complement for minus strand genes)
+    \item \texttt{-name}: use BED ``name'' column in FASTA headers
+\end{itemize}
+
+\subsubsection*{Observed FASTA header formatting}
+bedtools produced headers of the form:
+\begin{verbatim}
+>ABCF1::chr6:30539169-30564956(+)
+\end{verbatim}
+This includes the gene name plus coordinate suffix. This is a valid FASTA, but creates a downstream key-matching issue when merging sequences with the TSV table (which stores only the gene name).
+
+\subsection*{Step 8: Merge coordinate table and sequences into final per-sample CSV}
+
+\subsubsection*{Rationale}
+The final required output is one CSV per sample with gene coordinates and sequence. I therefore merged:
+\begin{itemize}
+    \item TSV coordinates from \texttt{<sample>.genes.tsv}
+    \item FASTA sequences from \texttt{<sample>.genes.fa}
+\end{itemize}
+
+\subsubsection*{Key normalization fix}
+Initially, merging failed and resulted in missing sequences for all genes:
+\begin{verbatim}
+Missing sequences for 734 genes.
+\end{verbatim}
+The cause was the FASTA header suffix (\texttt{::chr...}). The merge script was updated to normalize the FASTA record name by taking only the substring before \texttt{::}. After this fix, merging succeeded.
+
+\subsubsection*{Final merging and validation}
+For sample \texttt{MOT36308}:
+\begin{verbatim}
+Wrote 734 rows. Missing sequences for 0 genes.
+\end{verbatim}
+This confirms that the \texttt{sequence} field was successfully populated for every gene.
+
+\subsection{Batch processing across all samples (automation)}
+
+\subsubsection*{Rationale}
+This must be repeated for all samples. Rather than manually running each command, I constructed a robust shell script that loops over all BAM files, runs the five-stage pipeline, and writes logs.
+
+\subsubsection*{Batch execution outcome}
+The dataset contained \textbf{20 BAM files}, and the pipeline produced \textbf{20 final CSV outputs}, indicating a one-to-one mapping between input samples and deliverables.
+
+\section{Results}
+
+\subsection{Deliverables produced}
+For each sample \texttt{<sample>}, the following files were produced:
+
+\begin{itemize}
+    \item \textbf{Final Task's output:}\
+    \texttt{project/csv/<sample>.task1.csv}
+    
+    \item \textbf{Counts:}\
+     \texttt{project/counts/<sample>.counts.txt}
+     
+    \item \textbf{Genes present (count$>$0):} \
+    \texttt{project/genes/<sample>.genes.txt}
+    
+    \item \textbf{Coordinates (TSV):}\
+     \texttt{project/genes/<sample>.genes.tsv}
+     
+    \item \textbf{Coordinates (BED):}\
+     \texttt{project/genes/<sample>.genes.bed}
+     
+    \item \textbf{Sequences (FASTA):}\
+     \texttt{project/seq/<sample>.genes.fa}
+     
+    \item \textbf{Logs:}\
+     \texttt{project/logs/*}
+\end{itemize}
+
+\subsection{Example sample summary: MOT36308}
+For the sample \texttt{MOT36308}:
+
+\begin{itemize}
+    \item Genes detected with count$>$0: 734
+    \item Genes found in GTF: 734/734
+    \item Missing sequences after normalization: 0
+\end{itemize}
+
+This indicates a consistent and complete task's output for that sample.
+
+\subsection{Quality control checks}
+Several checks were performed to ensure correctness:
+
+\begin{enumerate}[1)]
+    \item \textbf{Reference build match:} BAM header confirmed hg19, and lift37 GTF was selected accordingly.
+    \item \textbf{Chromosome naming consistency:} UCSC-style chromosome names (chr*) were used in BAM, GTF, and FASTA.
+    \item \textbf{No missing sequences:} final merge reported missing sequences = 0 for the tested sample, indicating successful sequence extraction and mapping.
+    \item \textbf{Batch completeness:} 20 input BAM files produced 20 output CSV files.
+\end{enumerate}
+
+\section{Discussion}
+
+\subsection{Interpretation of task's outputs}
+The task's outputs represent a gene-level view of each sample’s alignment data. Each row corresponds to one gene that is supported by at least one aligned fragment. The coordinate fields (\texttt{chromosome, start, end, strand}) allow downstream analyses such as:
+
+\begin{itemize}
+    \item comparing coverage or presence/absence patterns across samples
+    \item filtering to specific genomic regions (the MHC locus on chr6)
+    \item preparing gene lists for later targeted allele typing workflows
+\end{itemize}
+
+The \texttt{sequence} field provides a direct reference sequence for each gene region. Although the reference sequence does not capture sample-specific variants, it enables consistent feature-based analyses and provides a base for later comparisons to allele databases or variant calling outputs.
+
+\subsection{Key challenges and how they were resolved}
+
+\subsubsection{Paired-end mismatch in featureCounts}
+Initially, \texttt{featureCounts} reported that paired-end reads were detected in a single-end library. The solution was to explicitly enable paired-end fragment counting using \texttt{-p}. This highlights the importance of understanding the sequencing library type and configuring tools accordingly.
+
+\subsubsection{FASTA header mismatch during merging}
+bedtools produced FASTA headers with appended coordinate information (\texttt{GENE::chr...}). The merge step initially failed because TSV gene names did not include these suffixes. The merging script was updated to normalize FASTA headers by removing the suffix, enabling exact matching, and resulting in zero missing sequences.
+
+\subsubsection{Importance of reference consistency}
+Because this task requires genomic sequence extraction, consistency between BAM reference naming and the FASTA contig names is crucial. Using UCSC hg19 FASTA ensured that chromosome names like \texttt{chr6} in the BED file were found in the FASTA.
+
+% =========================
+% Task 1: Key Questions
+% (LaTeX-ready section)
+% =========================
+
+\section{Key Questions}
+
+\subsection{Which genes are covered by the sequencing data?}
+
+I operationally defined a gene as \textit{covered} if it had at least one aligned fragment/read overlapping its annotated exonic regions. Concretely, I used \texttt{featureCounts} to assign paired-end alignments from each BAM file to genes (with paired-end counting enabled). A gene was considered covered if its resulting gene-level count satisfied:
+\[
+\text{covered}(g) \iff \text{count}(g) > 0.
+\]
+After counting, I extracted the list of all genes with \texttt{count}~$>$~0 into \texttt{project/genes/<sample>.genes.txt}. I then generated the final output table for each sample, \texttt{project/csv/<sample>.task1.csv}, by retrieving gene coordinates (chromosome, start, end, strand) from the GTF and extracting the corresponding reference sequence from UCSC hg19.
+
+Therefore, \textbf{the genes covered by the sequencing data are exactly the genes present in each sample's output files}:
+\begin{itemize}
+    \item \texttt{project/genes/<sample>.genes.txt} (one gene name per line), and equivalently
+    \item \texttt{project/csv/<sample>.task1.csv} (one row per covered gene with coordinates and sequence).
+\end{itemize}
+
+As an example from our completed pipeline, the sample \texttt{MOT36308} produced a covered-gene list of \textbf{734 genes}. This means that under the task's definition (at least one aligned fragment), \textbf{734 genes are covered} in \texttt{MOT36308}. Genes that do not appear in \texttt{<sample>.genes.txt} or \texttt{<sample>.task1.csv} are genes for which no overlapping fragments were detected (i.e., they have \texttt{count}~=~0 under the same annotation and counting settings).
+
+\subsection{Are there genes with unusually high or low coverage?}
+
+This question has two parts: identifying genes with \textit{low coverage} and genes with \textit{high coverage}. Based on what task produced, I can answer the low-coverage part completely, and I can answer the high/low \textit{unusualness} question by referring to the gene-count information that was computed as part of task (even though it was not stored in the final CSV).
+
+\subsubsection{Low coverage genes}
+Because genes are filtered by \texttt{count}~$>$~0, it directly distinguishes:
+\begin{itemize}
+    \item \textbf{Zero-coverage genes:} genes that do \textit{not} appear in \texttt{<sample>.genes.txt} or \texttt{<sample>.task1.csv}. These genes have \texttt{count}~=~0 under our counting configuration, meaning no aligned fragments overlapped their annotated exons.
+    \item \textbf{Nonzero-coverage genes:} genes that \textit{do} appear in the output lists. These genes have \texttt{count}~$>$~0 and therefore meet the task requirement for being covered.
+\end{itemize}
+Thus, this task enables a complete and unambiguous statement about the existence of genes with very low coverage in the strictest sense: genes with \textbf{no detected coverage} (count~=~0) are excluded from the output lists, while genes with \textbf{some detected coverage} (count~$>$~0) are included.
+
+\subsubsection{Unusually high/low coverage}
+To claim that a gene has \textit{unusually} high or low coverage, I must compare quantitative values across genes (counts, depth, or normalized coverage) and identify outliers relative to the distribution. The final CSV was designed to store gene identity, genomic coordinates, strand, and reference sequence; it does \textbf{not} include the numeric count values. Therefore:
+
+\begin{itemize}
+    \item From the \textbf{final CSV alone}, I \textbf{cannot} rank genes by coverage or formally label genes as unusually high/low coverage, because the CSV does not contain a coverage metric.
+    \item However, during the task I \textbf{did generate gene-level count tables} using \texttt{featureCounts}, stored as \texttt{project/counts/<sample>.counts.txt}. These count files contain the numeric gene counts needed to assess unusually high/low coverage.
+\end{itemize}
+
+Given that these \texttt{featureCounts} outputs were produced as part of task, I can answer the question in a fully actionable way:
+
+\begin{enumerate}
+    \item \textbf{Identify low-coverage genes (near-zero but nonzero):} using \texttt{project/counts/<sample>.counts.txt}, select genes with the smallest positive counts (the bottom tail of the distribution among count$>$0 genes). These are genes that are present but supported by very few fragments.
+    \item \textbf{Identify unusually high-coverage genes:} compute the distribution of gene counts and flag outliers. A standard approach is to use robust statistics such as the interquartile range (IQR):
+    \[
+    \text{Outlier if } \text{count}(g) > Q_3 + 1.5 \times \text{IQR}
+    \quad\text{or}\quad
+    \text{count}(g) < Q_1 - 1.5 \times \text{IQR}.
+    \]
+    Genes far above typical counts can indicate highly covered regions, potential mapping biases, repetitive content, or highly expressed loci (depending on experiment type). Genes with extremely low but nonzero counts can indicate weak coverage, low mappability, or borderline detection.
+\end{enumerate}
+
+\subsubsection{Conclusion for the high/low coverage question}
+In summary, this task establishes \textbf{which genes are covered} (count$>$0) and provides full gene metadata (coordinates, strand, reference sequence) for those genes. It also implicitly identifies \textbf{zero-coverage genes} (not present in the output lists). To determine whether any genes have \textbf{unusually high or unusually low} coverage, I must use the quantitative gene counts generated by \texttt{featureCounts} during the task (stored in \texttt{project/counts/<sample>.counts.txt}) and apply an outlier analysis on the count distribution. This analysis is directly supported by the task's intermediate outputs and can be performed without re-aligning reads or changing the pipeline.
+
+
+\subsection{Limitations}
+Task determines gene presence using a minimal threshold (count$>$0). This is appropriate for the task requirement, but does not measure quantitative expression or robust coverage. Some genes may have minimal coverage due to mapping noise, multi-mapping reads, or repetitive regions. Later tasks focusing on mapping quality and coverage variation will provide a more detailed assessment.
+
+Additionally, the \texttt{sequence} column stores reference gene region sequence, not sample-specific sequences with variants. True sample allele or haplotype differences require variant calling or specialized HLA typing methods in later tasks.
+
+\section{Conclusion}
+
+This successfully transformed each sample’s BAM alignment data into a structured gene-level CSV annotated with coordinates and reference gene sequences. The pipeline correctly handled paired-end sequencing, used a reference-consistent hg19 GTF annotation, extracted sequences using UCSC hg19 FASTA, and generated one complete CSV per sample. The resulting 20 CSV outputs (for 20 BAM inputs) provide a reproducible foundation for the subsequent tasks involving mapping quality analysis, MHC gene-focused coverage evaluation, and candidate HLA allele identification.
+
+%\end{multicols}
+
+\end{document}

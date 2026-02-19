@@ -1,0 +1,197 @@
+\documentclass[a4paper]{article}
+
+% Packages
+\usepackage{geometry}
+\geometry{left=2cm, right=2cm, top=2.54cm, bottom=1.54cm}
+\usepackage{graphicx, hyperref, setspace, amsmath, amssymb, titlesec, fancyhdr, multicol, parskip, indentfirst, etoolbox, caption, cite, xcolor}
+\usepackage{subcaption}
+\usepackage[shortlabels]{enumitem}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Task 1 Report},
+    pdfpagemode=FullScreen,
+}
+\urlstyle{same}
+
+% Title Formatting
+\titleformat{\section}{\centering\large\scshape}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\itshape}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\itshape}{\thesubsubsection}{1em}{}
+
+\setstretch{1.0}
+\setlength{\parskip}{6pt}
+\titlespacing{\section}{0pt}{6pt}{6pt}
+\titlespacing{\subsection}{0pt}{6pt}{6pt}
+\titlespacing{\subsubsection}{0pt}{6pt}{6pt}
+
+% Section Numbering
+\renewcommand{\thesection}{\Roman{section}.}
+\renewcommand{\thesubsection}{\textit{\Alph{subsection}.}}
+\renewcommand{\thesubsubsection}{\textit{\arabic{subsubsection}.}}
+\renewcommand{\thetable}{\Roman{table}}
+\renewcommand{\thefigure}{\Roman{figure}}
+
+\captionsetup{labelfont={small,sc}, textfont={small,sc}}
+
+% Fancy Header Configuration
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\textbf{Bioinformatics}}
+
+\begin{document}
+
+\vspace{-1.5cm}
+
+\lhead{Mahla Entezari--401222017}
+\rhead{Bioinformatics}
+\chead{\textbf{Assignment 1 – Task 2 Report}}
+\lfoot{Mahla Entezari}
+\rfoot{Shahid Beheshti University}
+
+\title{\textbf{MHC Genomics Analysis Project - Task 2 Report}\\
+\textit{Mapping Quality (MAPQ) Analysis}}
+
+\author{Mahla Entezari\thanks{{\href{mailto:MahlaEntezari.sbu@gmail.com}{MahlaEntezari.sbu@gmail.com}}}\\
+\textit{Shahid Beheshti University, Tehran, Iran}\\
+\textit{Bioinformatics  -- Fall 2025}}
+
+\date{\today}
+
+\maketitle
+
+
+
+\section{Introduction}
+
+In this task, I checked how reliable the read alignments are in each BAM file before doing any MHC-specific analysis. This step is important because the MHC region is difficult to map: many genes in the region are similar to each other, and the region contains repeated/homologous sequences. When a read matches multiple places in the genome, the aligner may not be able to confidently choose one location. That situation produces low mapping quality scores, which can affect coverage calculations and later allele typing.
+
+The main value I used is \textbf{MAPQ (mapping quality)}. MAPQ is assigned by the aligner and shows how confident it is that a read is placed correctly. In most datasets, \textbf{higher MAPQ = more confident mapping}. A common practical threshold is \textbf{MAPQ $\geq 30$} to represent ``confidently mapped'' reads, and \textbf{MAPQ = 0} to represent reads that are ambiguous (often multi-mapped).
+
+\section{Materials and Methods}
+
+\subsection{Input Data}
+
+The input files were BAM alignment files for multiple samples. Each BAM contains read alignments and a MAPQ value for each read.
+
+\subsection{MAPQ Extraction}
+
+For each BAM file, I extracted the MAPQ values for all reads using \texttt{samtools} (MAPQ is the 5th column when viewing BAM/SAM alignments). This produced one list of MAPQ values per sample. From that list I generated plots and computed summary metrics.
+
+\subsection{What I Computed and Why}
+
+To get a complete understanding, I used several plot types. Each plot gives a different view of the same data:
+
+\begin{itemize}
+    \item \textbf{Histogram (counts):} shows the raw number of reads at each MAPQ value.
+    \item \textbf{Histogram (normalized):} same histogram but converted into probabilities, so samples with different read counts can be compared fairly.
+    \item \textbf{Density plot (KDE):} a smooth curve that summarizes the overall shape of the distribution (useful for clearly seeing modes/peaks).
+    \item \textbf{CDF plot:} shows what fraction of reads have MAPQ $\leq x$. This is useful for quickly answering questions like ``what fraction of reads are below a quality threshold?''
+    \item \textbf{Across-sample bar plots:} show (1) the fraction of reads with MAPQ $\geq 30$ and (2) the fraction with MAPQ=0 for each sample, which makes it easy to spot outliers.
+\end{itemize}
+
+
+% =====================================================
+\section{Results}
+
+\subsection{QC Results Across Samples}
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/ALL.bar_pct_mapq_ge30.png}
+    \caption{Percentage of reads with MAPQ $\geq 30$ per sample.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/ALL.bar_pct_mapq0.png}
+    \caption{Percentage of reads with MAPQ = 0 per sample.}
+\end{subfigure}
+\caption{Across-sample summary of mapping quality metrics.}
+\label{fig:qc_summary}
+\end{figure}
+
+Figure~\ref{fig:qc_summary} shows the overall mapping quality across all samples. Most samples have a high fraction of confidently mapped reads (MAPQ $\geq 30$), typically around the low-to-mid 80\% range. This indicates good overall alignment quality. However, some samples show a higher fraction of MAPQ = 0 reads, suggesting increased alignment ambiguity.
+
+\subsection{MAPQ Distribution Shape (Representative Sample)}
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/MOT36308.hist_counts.png}
+    \caption{MAPQ histogram (counts) for sample MOT36308.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/MOT36308.hist_norm.png}
+    \caption{MAPQ histogram (normalized) for sample MOT36308.}
+\end{subfigure}
+\caption{Histogram-based MAPQ distributions for sample MOT36308.}
+\label{fig:histograms}
+\end{figure}
+
+Figure~\ref{fig:histograms} illustrates the distribution of MAPQ values for sample MOT36308. The raw histogram shows a strong peak near the maximum MAPQ value, indicating that most reads are confidently mapped. A smaller peak at MAPQ = 0 represents ambiguous reads. The normalized histogram confirms that most reads remain high-quality when scaled to probabilities.
+
+\subsection{Smooth and Cumulative Views of MAPQ}
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/MOT36308.kde.png}
+    \caption{MAPQ density (KDE) plot for sample MOT36308.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/MOT36308.cdf.png}
+    \caption{MAPQ cumulative distribution function (CDF) for sample MOT36308.}
+\end{subfigure}
+\caption{Smooth and cumulative representations of MAPQ values.}
+\label{fig:kde_cdf}
+\end{figure}
+
+Figure~\ref{fig:kde_cdf} provides two complementary views of mapping quality. The KDE plot highlights two groups of reads: a small low-MAPQ group and a larger high-MAPQ group. The CDF plot shows that most reads accumulate at high MAPQ values, confirming strong alignment confidence.
+
+% =====================================================
+
+%\begin{multicols}{2}
+\section{Discussion}
+
+The mapping quality patterns observed in this analysis reflect the known biological properties of the MHC region. MHC genes are highly polymorphic and share strong sequence similarity with one another. As a result, some sequencing reads cannot be uniquely aligned to a single genomic location, which explains the presence of reads with low or zero mapping quality (MAPQ = 0).
+
+Despite this expected ambiguity, most reads across the samples have high MAPQ values. This indicates that, although the MHC region is difficult to analyze, the majority of sequencing reads can still be placed confidently. Therefore, the alignment data are generally reliable for downstream biological analysis.
+
+Similar challenges have been reported in previous studies that analyze the MHC region using short-read sequencing technologies. These studies often describe bimodal mapping quality distributions, where reads are either confidently mapped or clearly ambiguous. The patterns observed in this analysis are consistent with those findings, suggesting that the results follow well-known characteristics of MHC sequencing data rather than being caused by technical errors.
+
+\section{Limitations}
+
+This analysis focuses only on mapping quality and does not directly evaluate whether reads are aligned to the correct allele or gene at the nucleotide level. In addition, MAPQ values depend on the alignment tool and its scoring system, meaning that MAPQ should be interpreted as a relative measure of confidence rather than an absolute indicator of correctness. Other factors, such as read length and sequencing depth, may also influence alignment quality but were not examined in this task.
+
+\section{Key Questions}
+
+\paragraph{Are the reads generally high quality?}
+
+Yes. For most samples, a large fraction of reads have high mapping quality scores (MAPQ $\geq 30$). This indicates that the majority of reads are confidently and uniquely aligned to the reference genome. Overall, the sequencing data appear to be of good quality and suitable for further analysis.
+
+\paragraph{Are there samples with poor mapping quality?}
+
+Yes. Some samples show a higher proportion of reads with MAPQ = 0 and a lower fraction of high-MAPQ reads compared to others. These samples contain more ambiguous alignments, which suggests increased difficulty in mapping reads uniquely. While these samples are not unusable, their results should be interpreted with greater caution in downstream analyses.
+
+\paragraph{How might this affect downstream MHC analysis?}
+
+Low mapping quality can affect downstream MHC analysis by reducing the accuracy of gene coverage estimates and lowering confidence in allele typing. Ambiguous reads may align to multiple similar MHC genes or alleles, which can bias comparisons and lead to incorrect biological conclusions. Therefore, samples with poorer mapping quality may require stricter MAPQ filtering or more conservative interpretation during MHC-specific analyses.
+
+\section{Conclusion}
+
+In this task, mapping quality was evaluated for all BAM files as a quality control step before biological interpretation. The results show that most samples contain predominantly high-quality, confidently mapped reads, supporting their use in downstream MHC gene coverage and allele analysis. At the same time, a subset of samples exhibits increased alignment ambiguity, highlighting the importance of careful quality assessment when working with complex genomic regions such as the MHC. Overall, this task provides a strong foundation for interpreting downstream analyses within the context of alignment confidence.
+%\end{multicols}{2}
+
+\end{document}

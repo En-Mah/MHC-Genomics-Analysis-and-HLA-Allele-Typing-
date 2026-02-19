@@ -1,0 +1,125 @@
+\documentclass[a4paper]{article}
+
+% Packages
+\usepackage{geometry}
+\geometry{left=2cm, right=2cm, top=2.54cm, bottom=1.54cm}
+\usepackage{graphicx, hyperref, setspace, amsmath, amssymb, titling, fancyhdr, float, multicol, parskip, indentfirst, etoolbox, caption, cite, xcolor}
+\usepackage{subcaption}
+\usepackage[shortlabels]{enumitem}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Task 3 Report},
+    pdfpagemode=FullScreen,
+}
+
+% Reduce spacing between paragraphs
+\setlength{\parskip}{4pt}
+
+% Section styling
+\usepackage{titlesec}
+\titleformat{\section}{\centering\large\scshape}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\itshape}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\itshape}{\thesubsubsection}{1em}{}
+
+\titlespacing{\section}{0pt}{6pt}{6pt}
+\titlespacing{\subsection}{0pt}{6pt}{6pt}
+\titlespacing{\subsubsection}{0pt}{6pt}{6pt}
+
+% Header and footer styling
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{MHC Genomics Analysis Project}
+\fancyhead[R]{Task 3 Report}
+\fancyfoot[C]{\thepage}
+
+\title{\textbf{MHC Genomics Analysis Project - Report}\\
+\large Analysis and Discussion}
+\author{Mahla Entezari\thanks{{\href{mailto:mahlaentezari.sbu@gmail.com}{mahlaentezari.sbu@gmail.com}}}\\
+Bioinformatics Assignment 1}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Part 1: Quality Assessment (QC)}
+\subsection{Objective}
+The goal of this step was to determine whether the sequencing data and read alignments are reliable enough for downstream biological interpretation.
+
+\subsection{Methods}
+Mapping quality (MAPQ) values were extracted from each BAM file using \texttt{samtools}. MAPQ represents the aligner’s confidence in the correctness of each read’s genomic placement. High MAPQ values indicate unique and confident alignments, while MAPQ = 0 typically indicates ambiguous or multi-mapped reads.
+
+Several plots were generated for each sample, including histograms, kernel density estimates (KDE), and cumulative distribution functions (CDF). In addition, across-sample bar plots summarized the fraction of reads with MAPQ $\geq 30$ and MAPQ = 0.
+
+\subsection{Results}
+Across all samples, the majority of reads showed high mapping quality, with most samples having approximately 80--85\% of reads with MAPQ $\geq 30$. This indicates generally reliable alignments. However, a subset of samples exhibited a higher proportion of MAPQ = 0 reads, suggesting increased alignment ambiguity.
+
+Representative plots for sample MOT36308 showed a bimodal MAPQ distribution: a dominant peak at high MAPQ values and a smaller peak at MAPQ = 0. This pattern is consistent with known properties of the MHC region, where homologous sequences can cause ambiguous read placement.
+
+\subsection{Interpretation}
+Overall, the sequencing and alignment quality is sufficient for downstream analysis. Samples with higher fractions of low-MAPQ reads should be interpreted with greater caution, as ambiguous mappings may affect coverage estimates and allele typing accuracy. These observations are consistent with the detailed QC analysis reported in Task 2 \cite{task2}.
+
+\section{Part 2: Gene Annotation Analysis}
+\subsection{Objective}
+The goal of this step was to identify which genes are covered by the sequencing data and to compare gene-level coverage patterns across samples.
+
+\subsection{Methods}
+Aligned reads were annotated using a GTF gene annotation file matched to the hg19 reference genome. Gene-level read counts were computed using \texttt{featureCounts} in paired-end mode. A gene was considered covered if it had at least one overlapping fragment (count $>$ 0).
+
+For each sample, a gene annotation table was generated containing gene name, genomic coordinates, strand, and reference sequence. The top 10 most covered genes per sample were identified based on read counts.
+
+\subsection{Results}
+Each sample contained several hundred genes with nonzero coverage (for example, 734 genes in MOT36308). Many highly covered genes were shared across samples, indicating broadly consistent sequencing performance. At the same time, some sample-specific differences were observed, reflecting biological variability or differences in alignment behavior.
+
+Several MHC-related genes were present among the covered genes, confirming that the MHC region is represented in the sequencing data.
+
+\subsection{Interpretation}
+The gene annotation results demonstrate that the sequencing data provide sufficient coverage across a large number of genes, including immune-related loci. Differences in coverage between samples may reflect both biological variation and technical factors such as mapping ambiguity.
+
+\section{Part 3: MHC-Specific Coverage Analysis}
+\subsection{Objective}
+This step focused specifically on immune-related genes within the MHC region, including MHC Class I, Class II, and MIC genes.
+
+\subsection{Methods}
+For each MHC gene, coverage depth was calculated by intersecting BAM alignments with gene coordinates and computing per-base read depth. Gene-level summary statistics such as mean depth and coverage fractions were derived. Coverage depth plots (bar plots and heatmaps) were used to compare coverage patterns across genes.
+
+\subsection{Results}
+Coverage depth varied substantially across MHC genes. Among MHC Class I genes, HLA-A generally showed higher and more uniform coverage compared to HLA-B and HLA-C. Several coverage gaps were observed, particularly in regions known to be difficult to map. Conversely, localized coverage hotspots were detected, which may reflect repetitive elements or alignment biases.
+
+\subsection{Interpretation}
+Uneven coverage across the MHC region is expected due to its complex genomic structure. Systematic differences between HLA-A, HLA-B, and HLA-C highlight the importance of gene-specific analysis when interpreting immune-related sequencing data.
+
+\section{Part 4: Allele Typing (HLA Analysis)}
+\subsection{Objective}
+The goal of this step was to identify candidate HLA alleles for each sample using sequence alignment.
+
+\subsection{Methods}
+Extracted MHC gene sequences were aligned to reference HLA allele sequences obtained from the IMGT/HLA database. For each gene, the best-matching allele was identified based on global alignment score and percent sequence identity. Confidence in allele calls was assessed using these metrics.
+
+\subsection{Results}
+In the analyzed sample, a high-confidence allele call was obtained for HLA-A (HLA-A*01:01:01:01), showing high alignment score and percent identity. Other HLA genes did not yield confident allele assignments and were reported as NA. This suggests either insufficient discriminatory sequence information or limitations in alignment due to sequence similarity.
+
+Across samples, the limited number of confident allele calls indicates that only a subset of loci can be reliably typed using short-read data.
+
+\subsection{Interpretation}
+The allele typing results demonstrate that confident HLA allele identification is possible for some loci but remains challenging overall. Genes with clear and high-identity matches can be typed with reasonable confidence, while others require more cautious interpretation.
+
+\section{Part 5: Biological Interpretation}
+\subsection{MHC Diversity and Sample Differences}
+The observed variation in coverage and allele typing success reflects the high diversity of the MHC region. Differences between samples may indicate underlying genetic variation, but technical factors such as mapping ambiguity also play a major role.
+
+\subsection{Implications for Immune Function and Disease}
+Variation in HLA alleles can influence antigen presentation and immune responsiveness, potentially affecting disease susceptibility. However, given the limited resolution of short-read sequencing in the MHC region, these results should be interpreted as preliminary.
+
+
+\bibliographystyle{plain}
+\begin{thebibliography}{2}
+\bibitem{task1} Task 1 Report: Gene-Level Annotation from BAM using GTF and Reference Genome.
+\bibitem{task2} Task 2 Report: Mapping Quality (MAPQ) Analysis.
+\end{thebibliography}
+
+\end{document}
+

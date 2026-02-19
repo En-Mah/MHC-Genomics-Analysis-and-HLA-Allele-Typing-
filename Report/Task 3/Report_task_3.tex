@@ -1,0 +1,173 @@
+\documentclass[a4paper]{article}
+
+% Packages
+\usepackage{geometry}
+\geometry{left=2cm, right=2cm, top=2.54cm, bottom=1.54cm}
+\usepackage{graphicx, hyperref, setspace, amsmath, amssymb, titling, fancyhdr, float, multicol, parskip, indentfirst, etoolbox, caption, cite, xcolor}
+\usepackage{subcaption}
+\usepackage[shortlabels]{enumitem}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Task 3 Report},
+    pdfpagemode=FullScreen,
+}
+
+% Reduce spacing between paragraphs
+\setlength{\parskip}{4pt}
+
+% Section styling
+\usepackage{titlesec}
+\titleformat{\section}{\centering\large\scshape}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\itshape}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\itshape}{\thesubsubsection}{1em}{}
+
+\titlespacing{\section}{0pt}{6pt}{6pt}
+\titlespacing{\subsection}{0pt}{6pt}{6pt}
+\titlespacing{\subsubsection}{0pt}{6pt}{6pt}
+
+% Header and footer styling
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{MHC Genomics Analysis Project}
+\fancyhead[R]{Task 3 Report}
+\fancyfoot[C]{\thepage}
+
+\title{\textbf{MHC Genomics Analysis Project - Task 3 Report}\\
+\large Pairwise Alignment and Allele Typing}
+\author{Mahla Entezari\thanks{{\href{mailto:mahlaentezari.sbu@gmail.com}{mahlaentezari.sbu@gmail.com}}}\\
+Bioinformatics Assignment 1}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+The goal of this task is to perform MHC-focused allele typing by comparing MHC gene sequences extracted from each sample to a database of known HLA alleles. Specifically, this task requires (i) extracting MHC genes from sample-level tables, (ii) converting the extracted sequences into FASTA format, and (iii) performing pairwise sequence alignment against reference allele sequences to identify the best-matching allele for each gene based on alignment score and sequence similarity.
+
+\section{Materials and Methods}
+
+\subsection{Input Data}
+
+The following inputs were used:
+
+\begin{itemize}
+    \item Per-sample gene tables from Task 1 in CSV format: \texttt{project/csv/MOT*.task1.csv}
+    \item Per-sample MHC FASTA sequences produced by Task 3 Step 2: \texttt{project/task3/step2\_mhc\_fasta/*.mhc\_step2.fa}
+    \item Reference HLA allele nucleotide sequences downloaded from the IPD-IMGT/HLA database mirror (ANHIG/IMGTHLA GitHub), locus-specific FASTA files combined into a single reference file:\
+    
+    \texttt{project/ref/hla\_alleles.fa}
+\end{itemize}
+
+\subsection{Step 1: Extract MHC Genes from Sample Tables}
+
+In Step 1, each sample CSV (\texttt{MOT*.task1.csv}) was filtered to retain only rows corresponding to MHC-related genes. The output per sample was written as:
+
+\begin{itemize}
+    \item \texttt{project/task3/step1\_mhc\_tables/MOTxxxx.mhc\_step1.csv}
+\end{itemize}
+
+A practical issue encountered at this stage was that some CSV fields (particularly the sequence column) can exceed Python's default CSV field size limit. This was addressed by increasing the parser field limit in the Step 1 implementation to ensure robust reading of long sequences.
+
+\subsection{Step 2: Convert MHC Tables to FASTA}
+
+In Step 2, each \texttt{*.mhc\_step1.csv} file was converted into FASTA format. Each FASTA record used a header containing the gene name, the MHC class label, and genomic coordinates, for example:
+
+\begin{verbatim}
+>HLA-A|class=I|chr6:...
+ACGT...
+\end{verbatim}
+
+Outputs were written to:
+
+\begin{itemize}
+    \item \texttt{project/task3/step2\_mhc\_fasta/MOTxxxx.mhc\_step2.fa}
+\end{itemize}
+
+A sanity check was performed by verifying that the number of FASTA records (count of \texttt{>}) matches the number of MHC rows in Step 1 logs for each sample.
+
+\subsection{Step 3: Pairwise Alignment and Allele Typing}
+
+\subsubsection{Reference Allele Database}
+
+Reference HLA allele sequences were assembled from locus-specific IPD-IMGT/HLA nucleotide FASTA files (\texttt{A\_nuc.fasta}, \texttt{B\_nuc.fasta}, \texttt{C\_nuc.fasta}, \texttt{DRB1\_nuc.fasta}, ...) downloaded via HTTPS and concatenated into:
+
+\begin{itemize}
+    \item \texttt{project/ref/hla\_alleles.fa}
+\end{itemize}
+
+Because IMGT/HLA FASTA headers may not begin with the allele name directly (often containing internal IDs such as \texttt{HLA00001} followed by the allele designation), reference header parsing was implemented using a robust pattern search over the entire header line to reliably extract locus and allele (\texttt{A*01:01:01:01}, \texttt{DRB1*15:01:01}).
+
+\subsubsection{Alignment Strategy}
+
+For each sample gene sequence, pairwise global alignment was performed against reference allele sequences corresponding to the same gene (locus). A Needleman--Wunsch global alignment (dynamic programming) was used with a simple scoring scheme:
+
+\begin{itemize}
+    \item Match score: +2
+    \item Mismatch score: -1
+    \item Gap penalty: -2
+\end{itemize}
+
+The best allele was selected using:
+
+\begin{enumerate}
+    \item Highest alignment score
+    \item Tie-breaker: higher percent identity
+\end{enumerate}
+
+For genes without a corresponding allele set in the reference database (many class III genes), the output fields were set to empty/zero values.
+
+\subsubsection{Output Format}
+
+The allele typing output was written in the required tabular format (matching the provided example) with columns:
+
+\begin{verbatim}
+sample_id,gene_name,mhc_class,best_allele,read_support,mean_alignment_score,percent_identity
+\end{verbatim}
+
+Here, \texttt{read\_support} represents the number of sequence records supporting a gene in the sample FASTA (typically 1 per gene in this workflow). The \texttt{mean\_alignment\_score} and \texttt{percent\_identity} summarize the best-match alignment(s) for that gene.
+
+Outputs were generated under:
+
+\begin{itemize}
+    \item \texttt{project/task3/step3\_alignment/MOTxxxx.mhc\_allele\_typing.real.csv}
+\end{itemize}
+
+\section{Results}
+
+\subsection{Pipeline Completion Across All Samples}
+
+This task was executed successfully for all 20 samples. The following outputs were generated consistently:
+
+\begin{itemize}
+    \item 20 Step 1 MHC tables: \texttt{project/task3/step1\_mhc\_tables/*.mhc\_step1.csv}
+    \item 20 Step 2 FASTA files: \texttt{project/task3/step2\_mhc\_fasta/*.mhc\_step2.fa}
+    \item Step 3 allele typing outputs per sample: \texttt{project/task3/step3\_alignment/*.real.csv}
+\end{itemize}
+
+
+\subsection{Allele Typing Output Characteristics}
+
+As expected, HLA class I and class II genes (\texttt{HLA-A}, \texttt{HLA-B}, \texttt{HLA-C}, \texttt{HLA-DRB1}, \texttt{HLA-DQB1}, ...) produce non-empty best allele matches. In contrast, many class III genes (complement-related genes) do not have allele entries in the HLA reference set, and therefore appear with empty \texttt{best\_allele} and zero scores/identity.
+
+The final per-sample CSV outputs therefore contain a mixture of typed HLA genes and non-typed (non-HLA) MHC-region genes, reflecting the scope of the reference allele database.
+
+\section{Discussion}
+
+Demonstrated an end-to-end MHC allele typing workflow driven by pairwise sequence alignment, two implementation details were essential for correctness:
+
+\begin{itemize}
+    \item \textbf{Handling long sequence fields in CSV:} Without raising the CSV field size limit, Step 1 can fail when sequences exceed the default limit.
+    \item \textbf{Robust IMGT/HLA header parsing:} IMGT/HLA FASTA headers often contain internal identifiers; extracting allele names requires searching the full header for locus*allele patterns.
+\end{itemize}
+
+
+\section{Conclusion}
+
+In this task, MHC genes were extracted from per-sample gene tables, converted to FASTA, and typed against a curated reference allele database using pairwise global alignment. The pipeline generated consistent outputs across all samples and produced allele calls for HLA genes based on alignment score and percent identity. 
+
+\end{document}
