@@ -1,0 +1,2 @@
+sample	input_csv	total_rows	mhc_rows	output_csv
+MOT36308	project/csv/MOT36308.task1.csv	734	47	project/task3/step1_mhc_tables/MOT36308.mhc_step1.csv

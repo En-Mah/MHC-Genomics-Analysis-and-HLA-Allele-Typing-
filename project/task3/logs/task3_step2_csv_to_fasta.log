@@ -1,0 +1,2 @@
+sample	input_csv	rows_read	records_written	output_fasta
+MOT36308	project/task3/step1_mhc_tables/MOT36308.mhc_step1.csv	47	47	project/task3/step2_mhc_fasta/MOT36308.mhc_step2.fa
